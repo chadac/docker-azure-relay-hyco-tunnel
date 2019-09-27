@@ -1,0 +1,212 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "defaultValue": "southcentralus",
+      "type": "String"
+    },
+    "containerName": {
+      "defaultValue": "relay-ci",
+      "type": "String"
+    },
+    "imageType": {
+      "defaultValue": "Public",
+      "allowedValues": [
+        "Public",
+        "Private"
+      ],
+      "type": "String"
+    },
+    "numberCpuCores": {
+      "defaultValue": "1",
+      "type": "String"
+    },
+    "memory": {
+      "defaultValue": "0.5",
+      "type": "String"
+    },
+    "restartPolicy": {
+      "defaultValue": "Always",
+      "allowedValues": [
+        "OnFailure",
+        "Always",
+        "Never"
+      ],
+      "type": "String"
+    },
+    "vnetName": {
+      "defaultValue": "",
+      "type": "String",
+      "metadata": {
+        "description": "VNet name"
+      }
+    },
+    "vnetNSG": {
+      "defaultValue": "<default-vnet>-default-nsg",
+      "type": "String",
+      "metadata": {
+        "description": "VNet Network Security Group"
+      }
+    },
+    "subnetAddressPrefix": {
+      "defaultValue": "10.6.2.0/24",
+      "type": "String",
+      "metadata": {
+        "description": "Subnet prefix"
+      }
+    },
+    "subnetName": {
+      "defaultValue": "relay-subnet",
+      "type": "String",
+      "metadata": {
+        "description": "Subnet name"
+      }
+    },
+    "relayNamespace": {
+      "defaultValue": "relay-namespace",
+      "type": "String",
+      "metadata": {
+        "description": "Relay namespace to use."
+      }
+    },
+    "hycoName": {
+      "type": "String",
+      "metadata": {
+        "description": "Hybrid connection name."
+      }
+    },
+    "hycoKeyName": {
+      "type": "String",
+      "metadata": {
+        "description": "Hybrid connection SAS listener key name."
+      }
+    },
+    "hycoKeyValue": {
+      "type": "String",
+      "metadata": {
+        "description": "Hybrid connection SAS listener primary/secondary key value."
+      }
+    },
+    "username": {
+      "type": "String"
+    },
+    "password": {
+      "type": "securestring"
+    }
+  },
+  "variables": {
+    "networkProfileName": "relay-service-networkProfile",
+    "interfaceConfigName": "eth0",
+    "interfaceIpConfig": "ipconfigprofile1",
+    "imageName": "cacrawford/azure-relay-hyco-tunnel",
+    "osType": "Linux"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/virtualNetworks/subnets",
+      "apiVersion": "2018-04-01",
+      "name": "[concat(parameters('vnetName'), '/', parameters('subnetName'))]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "addressPrefix": "[parameters('subnetAddressPrefix')]",
+        "networkSecurityGroup": {
+          "id": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('vnetNSG'))]"
+        },
+        "delegations": [
+          {
+            "name": "DelegationService",
+            "properties": {
+              "serviceName": "Microsoft.ContainerInstance/containerGroups"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkProfiles",
+      "apiVersion": "2018-07-01",
+      "name": "[variables('networkProfileName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[parameters('subnetName')]"
+      ],
+      "properties": {
+        "containerNetworkInterfaceConfigurations": [
+          {
+            "name": "[variables('interfaceConfigName')]",
+            "properties": {
+              "ipConfigurations": [
+                {
+                  "name": "[variables('interfaceIpConfig')]",
+                  "properties": {
+                    "subnet": {
+                      "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('vnetName'), parameters('subnetName'))]"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.ContainerInstance/containerGroups",
+      "apiVersion": "2018-10-01",
+      "name": "[parameters('containerName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[variables('networkProfileName')]"
+      ],
+      "tags": {},
+      "properties": {
+        "containers": [
+          {
+            "name": "[parameters('containerName')]",
+            "properties": {
+              "image": "[variables('imageName')]",
+              "resources": {
+                "requests": {
+                  "cpu": "[int(parameters('numberCpuCores'))]",
+                  "memoryInGB": "[float(parameters('memory'))]"
+                }
+              },
+              "environmentVariables": [
+                {
+                  "name": "RELAY_NAMESPACE",
+                  "secureValue": "[parameters('relayNamespace')]"
+                },
+                {
+                  "name": "HYCO_NAME",
+                  "secureValue": "[parameters('hycoName')]"
+                },
+                {
+                  "name": "HYCO_KEY_NAME",
+                  "secureValue": "[parameters('hycoKeyName')]"
+                },
+                {
+                  "name": "HYCO_KEY_VALUE",
+                  "secureValue": "[parameters('hycoKeyValue')]"
+                },
+                {
+                  "name": "USERNAME",
+                  "secureValue": "[parameters('username')]"
+                },
+                {
+                  "name": "PASSWORD",
+                  "secureValue": "[parameters('password')]"
+                }
+              ]
+            }
+          }
+        ],
+        "restartPolicy": "[parameters('restartPolicy')]",
+        "osType": "[variables('osType')]",
+        "networkProfile": {
+          "id": "[resourceId('Microsoft.Network/networkProfiles', variables('networkProfileName'))]"
+        }
+      }
+    }
+  ]
+}
